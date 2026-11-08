@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Doomsday</string>
+    <string name="target_date_subtitle">18 DEC 2026 • 00:00:00 IST</string>
+    <string name="widget_compact_name">Doomsday Compact</string>
+    <string name="widget_compact_desc">Minimal glassmorphism countdown (M | D | H | M | S)</string>
+    <string name="widget_large_name">Doomsday Large</string>
+    <string name="widget_large_desc">Expanded glassmorphism countdown with full unit labels</string>
+    <string name="lock_notification_channel_name">Doomsday Lock Screen Countdown</string>
+    <string name="lock_notification_channel_desc">Displays the live Doomsday countdown persistently on your lock screen without waking the CPU.</string>
+</resources>

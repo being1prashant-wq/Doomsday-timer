@@ -1,0 +1,6 @@
+{
+  "name": "Doomsday",
+  "description": "Minimalist glassmorphism live countdown and home/lock-screen widget tracking 18 December 2026 00:00 IST with custom digit animations and analog stick dial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

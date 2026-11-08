@@ -25,12 +25,18 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses
+      - name: Configure Pre-Installed Android SDK & Licenses
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          # ubuntu-latest already includes the Android SDK at /usr/local/lib/android/sdk ($ANDROID_HOME).
+          # Directly write the standard Android SDK license hashes so Gradle can auto-download
+          # any required platform/build-tools without relying on third-party setup-android actions.
+          SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p "$SDK_DIR/licenses"
+          printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_DIR/licenses/android-sdk-license"
+          printf "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_DIR/licenses/android-sdk-preview-license"
+          printf "\nd975f751698a77b662f1254ddbeed3901e976f5a" > "$SDK_DIR/licenses/intel-android-extra-license"
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
 
       - name: Normalize Versions for Public GitHub Actions Runner
         run: |
@@ -91,7 +97,7 @@ jobs:
             fi
           fi
 
-          # Create dummy release keystore so release signingConfig block never errors during configuration
+          # Create fallback release keystore so release signingConfig block never errors during configuration
           if [ ! -f my-upload-key.jks ]; then
             cp debug.keystore my-upload-key.jks
           fi

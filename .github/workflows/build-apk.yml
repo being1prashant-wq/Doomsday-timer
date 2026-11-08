@@ -27,9 +27,6 @@ jobs:
 
       - name: Configure Pre-Installed Android SDK & Licenses
         run: |
-          # ubuntu-latest already includes the Android SDK at /usr/local/lib/android/sdk ($ANDROID_HOME).
-          # Directly write the standard Android SDK license hashes so Gradle can auto-download
-          # any required platform/build-tools without relying on third-party setup-android actions.
           SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           mkdir -p "$SDK_DIR/licenses"
           printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_DIR/licenses/android-sdk-license"
@@ -38,11 +35,9 @@ jobs:
           echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
 
-      - name: Normalize Versions for Public GitHub Actions Runner
+      - name: Normalize Build Config for Public GitHub Actions Runner
         run: |
-          # AI Studio uses an internal container mirror with AGP 9.1.1 / Gradle 9.3.1 / compileSdk 36.1.
-          # When running on public GitHub Actions runners against Google Maven & Gradle distributions,
-          # normalize to publicly released stable versions so dependency resolution succeeds cleanly.
+          # 1. Normalize internal AI Studio container versions to publicly available Maven versions
           sed -i 's/agp = "9.1.1"/agp = "8.8.0"/g' gradle/libs.versions.toml
           sed -i 's/coreKtx = "1.18.0"/coreKtx = "1.15.0"/g' gradle/libs.versions.toml
           sed -i 's/junitVersion = "1.3.0"/junitVersion = "1.2.1"/g' gradle/libs.versions.toml
@@ -53,15 +48,24 @@ jobs:
           sed -i 's/googleServices = "4.5.0"/googleServices = "4.4.2"/g' gradle/libs.versions.toml
           sed -i 's/gradle-9.3.1-bin.zip/gradle-8.11.1-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
 
-          # Replace AGP 9 compileSdk DSL block with standard compileSdk = 35 & targetSdk = 35 for public SDK
+          # 2. Remove the unused google-services plugin & MissingGoogleServicesStrategy (which only exists in internal AGP/GMS)
+          sed -i '/MissingGoogleServicesStrategy/d' app/build.gradle.kts
+          sed -i '/libs.plugins.google.services/d' app/build.gradle.kts
+          sed -i '/libs.plugins.google.services/d' build.gradle.kts
+
+          # 3. Replace AGP 9 compileSdk DSL block with standard compileSdk = 35 & targetSdk = 35
           sed -i 's/compileSdk { version = release(36) { minorApiLevel = 1 } }/compileSdk = 35/g' app/build.gradle.kts
           sed -i 's/targetSdk = 36/targetSdk = 35/g' app/build.gradle.kts
 
-          # Ensure kotlin-android plugin is present in AGP 8.x
+          # 4. Ensure kotlin-android plugin and matching jvmTarget = "11" are configured for AGP 8.8.0
           if ! grep -q "kotlin-android" gradle/libs.versions.toml; then
             sed -i '/\[plugins\]/a kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }' gradle/libs.versions.toml
             sed -i '/alias(libs.plugins.android.application)/a \  alias(libs.plugins.kotlin.android) apply false' build.gradle.kts
             sed -i '/alias(libs.plugins.android.application)/a \  alias(libs.plugins.kotlin.android)' app/build.gradle.kts
+          fi
+
+          if ! grep -q "kotlinOptions" app/build.gradle.kts; then
+            sed -i '/targetCompatibility = JavaVersion.VERSION_11/a \  }\n  kotlinOptions {\n    jvmTarget = "11"' app/build.gradle.kts
           fi
 
       - name: Setup Gradle
@@ -71,7 +75,6 @@ jobs:
 
       - name: Prepare Signing Keystore & Environment Files
         run: |
-          # Ensure .env exists for the Secrets Gradle Plugin
           if [ ! -f .env ]; then
             if [ -f .env.example ]; then
               cp .env.example .env
@@ -80,7 +83,6 @@ jobs:
             fi
           fi
 
-          # Restore debug.keystore from debug.keystore.base64 if present, or generate a valid Android debug keystore
           if [ ! -f debug.keystore ]; then
             if [ -f debug.keystore.base64 ]; then
               base64 -d debug.keystore.base64 > debug.keystore
@@ -97,18 +99,17 @@ jobs:
             fi
           fi
 
-          # Create fallback release keystore so release signingConfig block never errors during configuration
           if [ ! -f my-upload-key.jks ]; then
             cp debug.keystore my-upload-key.jks
           fi
 
-      - name: Run Unit Tests
-        run: |
-          gradle :app:testDebugUnitTest --no-daemon --no-configuration-cache
-
       - name: Build Debug APK
         run: |
-          gradle :app:assembleDebug --no-daemon --no-configuration-cache
+          gradle :app:assembleDebug --no-daemon --no-configuration-cache --stacktrace
+
+      - name: Run Unit Tests
+        run: |
+          gradle :app:testDebugUnitTest --no-daemon --no-configuration-cache --stacktrace
 
       - name: Upload Doomsday Debug APK Artifact
         uses: actions/upload-artifact@v4

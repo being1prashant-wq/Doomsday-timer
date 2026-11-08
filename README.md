@@ -44,3 +44,14 @@
 1. Open the **Lock Screen** tab in Doomsday.
 2. Enable **Lock Screen Live Countdown** (grant notification permission on Android 13+ if prompted).
 3. Ensure Android *Settings → Notifications → Lock screen notifications* is set to **Show alerting and silent notifications**.
+
+---
+
+## GitHub Actions APK Build Workflow
+
+This repository includes an automated GitHub Actions workflow at `.github/workflows/build-apk.yml` that builds the APK cleanly on every push, pull request, or manual `workflow_dispatch` trigger:
+1. Configures **JDK 21 (Temurin)**, **Android SDK (API 36.1)**, and **Gradle 9.3.1**.
+2. Automatically provisions `.env` from `.env.example` and restores `debug.keystore` from `debug.keystore.base64` (or generates a fallback keystore) so signing never fails in CI.
+3. Executes `:app:testDebugUnitTest` and `:app:assembleDebug`.
+4. Uploads the built APK as the **`Doomsday-debug-apk`** downloadable workflow artifact.
+

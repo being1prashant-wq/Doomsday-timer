@@ -48,37 +48,140 @@ jobs:
           sed -i 's/googleServices = "4.5.0"/googleServices = "4.4.2"/g' gradle/libs.versions.toml
           sed -i 's/gradle-9.3.1-bin.zip/gradle-8.11.1-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
 
-          # 2. Remove unused google-services plugin & MissingGoogleServicesStrategy (internal-only API)
-          sed -i '/MissingGoogleServicesStrategy/d' app/build.gradle.kts
-          sed -i '/libs.plugins.google.services/d' app/build.gradle.kts
-          sed -i '/libs.plugins.google.services/d' build.gradle.kts
-          sed -i '/googleServices.missing.passthrough/d' gradle.properties
-
-          # 3. Replace AGP 9 compileSdk DSL block with standard compileSdk = 35 & targetSdk = 35
-          sed -i 's/compileSdk { version = release(36) { minorApiLevel = 1 } }/compileSdk = 35/g' app/build.gradle.kts
-          sed -i 's/targetSdk = 36/targetSdk = 35/g' app/build.gradle.kts
-
-          # 4. Ensure kotlin-android plugin and matching jvmTarget = "11" are configured cleanly for AGP 8.8.0
           if ! grep -q "kotlin-android" gradle/libs.versions.toml; then
             sed -i '/\[plugins\]/a kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }' gradle/libs.versions.toml
-            sed -i '/alias(libs.plugins.android.application)/a \  alias(libs.plugins.kotlin.android) apply false' build.gradle.kts
-            sed -i '/alias(libs.plugins.android.application)/a \  alias(libs.plugins.kotlin.android)' app/build.gradle.kts
           fi
 
-          # Add top-level kotlin { compilerOptions { jvmTarget } } at the end of app/build.gradle.kts
-          if ! grep -q "JvmTarget.JVM_11" app/build.gradle.kts; then
-            cat << 'EOF' >> app/build.gradle.kts
-
-          kotlin {
-            compilerOptions {
-              jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-            }
+          # 2. Write a clean root build.gradle.kts for public CI
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+            alias(libs.plugins.android.application) apply false
+            alias(libs.plugins.kotlin.android) apply false
+            alias(libs.plugins.kotlin.compose) apply false
+            alias(libs.plugins.google.devtools.ksp) apply false
+            alias(libs.plugins.secrets) apply false
           }
           EOF
-          fi
 
-          echo "=== Normalized app/build.gradle.kts ==="
-          cat app/build.gradle.kts
+          # 3. Write a clean, self-contained app/build.gradle.kts for public CI (AGP 8.8.0 + Kotlin 2.1.0 + compileSdk 35)
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+            alias(libs.plugins.android.application)
+            alias(libs.plugins.kotlin.android)
+            alias(libs.plugins.kotlin.compose)
+            alias(libs.plugins.google.devtools.ksp)
+            alias(libs.plugins.secrets)
+          }
+
+          android {
+            namespace = "com.example"
+            compileSdk = 35
+
+            defaultConfig {
+              applicationId = "com.aistudio.doomsday.kxzpqr"
+              minSdk = 24
+              targetSdk = 35
+              versionCode = 1
+              versionName = "1.0"
+
+              testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+            }
+
+            signingConfigs {
+              create("release") {
+                val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("STORE_PASSWORD") ?: "android"
+                keyAlias = "upload"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
+              }
+              create("debugConfig") {
+                storeFile = file("${rootDir}/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+              }
+            }
+
+            buildTypes {
+              release {
+                isCrunchPngs = false
+                isMinifyEnabled = false
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                signingConfig = signingConfigs.getByName("release")
+              }
+              debug {
+                signingConfig = signingConfigs.getByName("debugConfig")
+              }
+            }
+
+            compileOptions {
+              isCoreLibraryDesugaringEnabled = true
+              sourceCompatibility = JavaVersion.VERSION_11
+              targetCompatibility = JavaVersion.VERSION_11
+            }
+
+            kotlinOptions {
+              jvmTarget = "11"
+            }
+
+            buildFeatures {
+              compose = true
+              buildConfig = true
+            }
+
+            testOptions {
+              unitTests {
+                isIncludeAndroidResources = true
+              }
+            }
+
+            dependenciesInfo {
+              includeInApk = false
+              includeInBundle = true
+            }
+          }
+
+          secrets {
+            propertiesFileName = ".env"
+            defaultPropertiesFileName = ".env.example"
+            ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+          }
+
+          dependencies {
+            coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+            implementation(platform(libs.androidx.compose.bom))
+            implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.compose.material.icons.core)
+            implementation(libs.androidx.compose.material.icons.extended)
+            implementation(libs.androidx.compose.material3)
+            implementation(libs.androidx.compose.ui)
+            implementation(libs.androidx.compose.ui.graphics)
+            implementation(libs.androidx.compose.ui.tooling.preview)
+            implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.datastore.preferences)
+            implementation(libs.androidx.lifecycle.runtime.compose)
+            implementation(libs.androidx.lifecycle.runtime.ktx)
+            implementation(libs.androidx.lifecycle.viewmodel.compose)
+            implementation(libs.kotlinx.coroutines.android)
+            implementation(libs.kotlinx.coroutines.core)
+            testImplementation(libs.androidx.compose.ui.test.junit4)
+            testImplementation(libs.androidx.core)
+            testImplementation(libs.androidx.junit)
+            testImplementation(libs.junit)
+            testImplementation(libs.kotlinx.coroutines.test)
+            testImplementation(libs.robolectric)
+            androidTestImplementation(platform(libs.androidx.compose.bom))
+            androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+            androidTestImplementation(libs.androidx.espresso.core)
+            androidTestImplementation(libs.androidx.junit)
+            androidTestImplementation(libs.androidx.runner)
+            debugImplementation(libs.androidx.compose.ui.test.manifest)
+            debugImplementation(libs.androidx.compose.ui.tooling)
+          }
+          EOF
+
+          sed -i '/googleServices.missing.passthrough/d' gradle.properties
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
